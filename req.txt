@@ -1,0 +1,10 @@
+## Bibliotecas ##
+
+discord.py
+discord.py[voice]
+PyNaCL
+youtube_dl
+ffmpeg
+yt-dlp
+random
+asyncio
