@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Painel de Logs</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: monospace;
+            background-color: #121212;
+            color: #00ff90;
+            padding: 20px;
+        }
+        #log {
+            white-space: pre-wrap;
+            background: #1e1e1e;
+            border: 1px solid #00ff90;
+            padding: 10px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h2>🪵 Painel de Logs em Tempo Real</h2>
+    <div id="log">Conectando ao servidor de logs...</div>
+
+    <script>
+        const socket = io('http://localhost:8765');
+
+        socket.on('connect', () => {
+            console.log('[CLIENTE] Conectado ao Socket.IO.');
+            document.getElementById('log').innerText += '\n[CLIENTE] Conectado ao servidor.\n';
+        });
+
+        socket.on('log_message', data => {
+            const logDiv = document.getElementById('log');
+            logDiv.innerText += data.message + '\n';
+            logDiv.scrollTop = logDiv.scrollHeight;
+        });
+    </script>
+</body>
+</html>

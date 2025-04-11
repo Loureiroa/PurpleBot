@@ -324,3 +324,64 @@ async def register_music_commands(bot):
             await message.delete()
         except discord.NotFound:
             pass
+        
+        # COMANDO SHUFFLE #
+    
+    @bot.tree.command(name="shuffle", description="Embaralha a fila de músicas")
+    async def shuffle(interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=False)
+        
+        if not bot.music_queue or len(bot.music_queue) < 2:
+            message = await interaction.followup.send("❌ Não há músicas suficientes na fila para embaralhar.", ephemeral=True)
+            await asyncio.sleep(3)
+            await message.delete()
+            return
+        
+        # Convertendo para lista para embaralhar e depois de volta para deque
+        queue_list = list(bot.music_queue)
+        import random
+        random.shuffle(queue_list)
+        bot.music_queue = deque(queue_list)
+        
+        # Exibe primeiras 5 músicas da fila embaralhada (ou menos se a fila for menor)
+        preview_size = min(5, len(bot.music_queue))
+        preview = "\n".join(f"{i+1}. {song['title']}" for i, song in enumerate(list(bot.music_queue)[:preview_size]))
+        
+        message = await interaction.followup.send(f"🔀 **Fila embaralhada!**\nPrimeiras {preview_size} músicas:\n{preview}")
+        await asyncio.sleep(5)
+        try:
+            await message.delete()
+        except discord.NotFound:
+            pass
+        
+        
+    # COMANDO NEXTSONG #
+
+    @bot.tree.command(name="nextsong", description="Mostra a próxima música na fila")
+    async def nextsong(interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=False)
+        
+        if not bot.music_queue:
+            message = await interaction.followup.send("❌ Não há músicas na fila.", ephemeral=True)
+            await asyncio.sleep(3)
+            await message.delete()
+            return
+        
+        # Obtém a próxima música
+        next_song = bot.music_queue[0]['title']
+        
+        # Verifica se há música atual tocando
+        current_status = ""
+        if bot.current_song:
+            current_status = f"🎵 **Tocando agora:** {bot.current_song['title']}\n"
+        
+        message = await interaction.followup.send(
+            f"{current_status}🔜 **Próxima música:** {next_song}"
+        )
+        
+        # A mensagem ficará visível por 7 segundos
+        await asyncio.sleep(7)
+        try:
+            await message.delete()
+        except discord.NotFound:
+            pass
