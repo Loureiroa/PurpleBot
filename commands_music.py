@@ -1,94 +1,28 @@
 import discord
 import yt_dlp as youtube_dl
 import asyncio
+import random
 from collections import deque
 from discord import app_commands
 from discord.app_commands import checks
 from bot_logic import send_embed_now_playing
+from playback import get_song_info, play_next
 
-ffmpeg_path = "F:\\ffmpeg\\ffmpeg.exe"  # Caminho do FFmpeg
 
 async def register_music_commands(bot):
     bot.music_queue = deque()
     bot.current_song_message = None
     bot.song_cache = {}
-    bot.loop_current = False
+    bot.loop_mode = "off"  # Inicializa o modo de loop
     bot.current_song = None
     bot.last_played = deque(maxlen=5)  # Histórico de músicas
-
-    async def get_song_info(url):
-        if url in bot.song_cache:
-            return bot.song_cache[url]
-
-        ydl_opts = {
-            'format': 'bestaudio[ext=m4a]/bestaudio/best',
-            'quiet': True,
-            'noplaylist': True,
-            'extract_flat': False,
-            'default_search': 'auto',
-        }
-
-        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            audio_url = info.get('url') or info['formats'][0]['url']
-            title = info.get('title', 'Título desconhecido')
-            song_data = {'url': audio_url, 'title': title}
-            bot.song_cache[url] = song_data
-            return song_data
-
-    async def play_next(bot, voice_client):
-        if bot.loop_mode == "musica" and bot.current_song:
-            bot.music_queue.appendleft(bot.current_song)
-        elif bot.loop_mode == "fila" and bot.current_song:
-            bot.music_queue.append(bot.current_song)
-
-        if not bot.music_queue:
-            bot.current_song = None
-            if bot.current_song_message:
-                try:
-                    await bot.current_song_message.delete()
-                except discord.NotFound:
-                    pass
-            return
-
-        song = bot.music_queue.popleft()
-        bot.current_song = song
-        bot.last_played.append(song['title'])
-        song_info = await get_song_info(song['url'])
-
-        def after_callback(error):
-            if error:
-                print(f"[ERRO AO TOCAR] {error}")
-            else:
-                print("[INFO] Música finalizada.")
-            bot.loop.call_soon_threadsafe(asyncio.create_task, play_next(bot, voice_client))
-
-        ffmpeg_options = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn -ar 48000 -ac 2 -b:a 192k'
-        }
-
-        source = discord.FFmpegPCMAudio(
-            source=song_info['url'],
-            executable=ffmpeg_path,
-            **ffmpeg_options
-        )
-
-        voice_client.stop()
-        voice_client.play(source, after=after_callback)
-
-        if bot.current_song_message:
-            try:
-                await bot.current_song_message.delete()
-            except discord.NotFound:
-                pass
-
-        bot.current_song_message = await send_embed_now_playing(song['interaction'].channel, song_info['title'])
+      
 
     # COMANDO PLAY #
     
-    @bot.tree.command(name="play", description="Toca uma música do YouTube")
-    async def play(interaction: discord.Interaction, url: str):
+    @bot.tree.command(name="play", description="Toca uma música do YouTube (URL ou nome)")
+    @app_commands.describe(pesquisa="URL ou nome da música para tocar")
+    async def play(interaction: discord.Interaction, pesquisa: str):
         try:
             if not interaction.user.voice or not interaction.user.voice.channel:
                 await interaction.response.send_message("❌ Você precisa estar em um canal de voz!", ephemeral=True)
@@ -101,23 +35,39 @@ async def register_music_commands(bot):
                 await channel.connect()
 
             voice_client = interaction.guild.voice_client
-            song_info = await get_song_info(url)
-
-            bot.music_queue.append({
-                'url': url,
-                'title': song_info['title'],
-                'interaction': interaction
-            })
-
-            if not voice_client.is_playing():
-                await play_next(bot, voice_client)
-
+            
+            # Determina se é URL ou termo de pesquisa
+            is_url = pesquisa.startswith('http://') or pesquisa.startswith('https://')
+            search_text = "Buscando..." if not is_url else "Carregando..."
+            
+            progress_msg = await interaction.followup.send(f"🔍 {search_text}", ephemeral=True)
+            
             try:
-                response = await interaction.followup.send(f"🎵 **{song_info['title']}** adicionada à fila!")
+                song_info = await get_song_info(pesquisa,bot)
+                
+                # Atualiza a mensagem enquanto processa
+                original_url = pesquisa if is_url else f"Busca: '{pesquisa}'"
+                await progress_msg.edit(content=f"✅ Encontrado: **{song_info['title']}**")
+                
+                bot.music_queue.append({
+                    'url': pesquisa,  # Mantém a pesquisa original para caso de loop
+                    'title': song_info['title'],
+                    'interaction': interaction,
+                    'thumbnail': song_info.get('thumbnail', '')
+                })
+
+                if not voice_client.is_playing():
+                    await play_next(bot, voice_client)
+
+                await asyncio.sleep(1)
+                await progress_msg.edit(content=f"🎵 **{song_info['title']}** adicionada à fila!")
                 await asyncio.sleep(2)
-                await response.delete()
-            except discord.NotFound:
-                pass
+                await progress_msg.delete()
+
+            except Exception as e:
+                await progress_msg.edit(content=f"❌ Erro ao buscar música: {e}")
+                await asyncio.sleep(3)
+                await progress_msg.delete()
 
         except Exception as e:
             await interaction.followup.send(f"❌ Erro: {e}", ephemeral=True)
@@ -324,8 +274,8 @@ async def register_music_commands(bot):
             await message.delete()
         except discord.NotFound:
             pass
-        
-        # COMANDO SHUFFLE #
+            
+    # COMANDO SHUFFLE #
     
     @bot.tree.command(name="shuffle", description="Embaralha a fila de músicas")
     async def shuffle(interaction: discord.Interaction):
@@ -339,7 +289,6 @@ async def register_music_commands(bot):
         
         # Convertendo para lista para embaralhar e depois de volta para deque
         queue_list = list(bot.music_queue)
-        import random
         random.shuffle(queue_list)
         bot.music_queue = deque(queue_list)
         
@@ -353,8 +302,7 @@ async def register_music_commands(bot):
             await message.delete()
         except discord.NotFound:
             pass
-        
-        
+            
     # COMANDO NEXTSONG #
 
     @bot.tree.command(name="nextsong", description="Mostra a próxima música na fila")
