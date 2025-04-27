@@ -13,7 +13,7 @@ TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 # Configuração básica de logs
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(message)s')
 
-# Adicionar um handler HTTP para enviar logs ao servidor Flask
+# Adiciona um handler HTTP para enviar logs ao servidor Flask
 class WebSocketHTTPHandler(logging.Handler):
     def __init__(self, url):
         super().__init__()

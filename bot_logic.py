@@ -1,5 +1,6 @@
 import discord
 import asyncio
+import logging
 from discord import app_commands
 from discord.app_commands import checks
 
@@ -66,13 +67,27 @@ async def clear_channel(interaction: discord.Interaction, bot, amount: int = 10)
 ## MENSAGEM DE MÚSICA ATUAL COM EMBED E REAÇÕES ##
 
 async def send_embed_now_playing(channel, song_title):
+    import logging
+    logger = logging.getLogger("bot_logic.now_playing")
+    
+    logger.info(f"Iniciando envio de mensagem 'Tocando agora' para: {song_title}")
+    
     embed = discord.Embed(
         title="🎶 Tocando agora",
         description=song_title,
         color=discord.Color.dark_purple()
     )
     embed.set_footer(text="Use /pause, /resume, /skip ou /stop para controlar")
-    message = await channel.send(embed=embed)
-    await message.add_reaction("⏯️")  # play/pause
-    await message.add_reaction("⏩")  # skip
-    return message
+    
+    try:
+        message = await channel.send(embed=embed)
+        logger.info(f"Mensagem enviada com ID: {message.id}")
+        
+        await message.add_reaction("⏯️")
+        await message.add_reaction("⏩")
+        logger.info(f"Reações adicionadas com sucesso à mensagem ID: {message.id}")
+        
+        return message
+    except Exception as e:
+        logger.error(f"Erro ao enviar mensagem 'Tocando agora': {e}")
+        return None
